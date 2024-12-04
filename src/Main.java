@@ -1,7 +1,4 @@
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -19,6 +16,11 @@ public class Main {
         TaskGroup taskGroup1 = new TaskGroup(group1);
         TaskGroup taskGroup2 = new TaskGroup(group2);
 
+        Task<Integer> task3 = new Task<>(UUID.randomUUID(), taskGroup2, TaskType.READ, () -> {
+            System.out.println("Task 3 executing");
+            return 30;
+        });
+
         Task<Integer> task1 = new Task<>(UUID.randomUUID(), taskGroup1, TaskType.READ, () -> {
             System.out.println("Task 1 executing");
             return 10;
@@ -29,10 +31,7 @@ public class Main {
             return 20;
         });
 
-        Task<Integer> task3 = new Task<>(UUID.randomUUID(), taskGroup2, TaskType.READ, () -> {
-            System.out.println("Task 3 executing");
-            return 30;
-        });
+
 
         Task<Integer> task4 = new Task<>(UUID.randomUUID(), taskGroup2, TaskType.READ, () -> {
             System.out.println("Task 4 executing");
@@ -47,8 +46,19 @@ public class Main {
 
         List<Task<Integer>> tasks = Arrays.asList(task1, task2, task3, task4, task5);
 
+        List<CompletableFuture<Integer>> futures = new ArrayList<>();
+
         for (Task<Integer> task :tasks){
-            taskExecutor.submitTask(task);
+            futures.add((CompletableFuture<Integer>) taskExecutor.submitTask(task));
+        }
+
+        CompletableFuture<Void> combinedFuture = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+        try {
+            combinedFuture.join();
+        } catch (final Exception e) {
+            throw e;
+        }finally {
+            taskExecutor.shutdown();
         }
 
 
@@ -78,15 +88,18 @@ public class Main {
 
         private final HashMap<String, CompletableFuture> futureMap;
 
+        private final ExecutorService executorService;
+
         public TaskExecutorImpl(int maxAllowedConcurrency) {
             this.maxAllowedConcurrency = maxAllowedConcurrency;
             this.futureMap = new HashMap<>();
+             executorService = Executors.newFixedThreadPool(maxAllowedConcurrency);
         }
 
 
         @Override
         public <T> Future<T> submitTask(Task<T> task) {
-            ExecutorService executorService = Executors.newFixedThreadPool(maxAllowedConcurrency);
+
             CompletableFuture<T> lastFuture = getFutureMapForTaskGroup(task.taskGroup);
 
             CompletableFuture<T> taskFuture = (lastFuture != null)
@@ -116,6 +129,10 @@ public class Main {
                 System.err.println("Error in task :" + e.getMessage());
                 return null;
             });
+        }
+
+        public void shutdown(){
+            executorService.shutdown();
         }
     }
 
